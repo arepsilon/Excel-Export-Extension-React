@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom overrides if needed */
+:root {
+  --cui-primary: #0560e3;
+  --cui-primary-rgb: 5, 96, 227;
+  --cui-btn-color: #fff;
+  --cui-btn-bg: #0560e3;
+  --cui-btn-border-color: #0560e3;
+  --cui-btn-hover-bg: #044bb3;
+  --cui-btn-hover-border-color: #044bb3;
+}
+
+/* Force override CoreUI classes */
+.btn-primary {
+  background-color: #0560e3 !important;
+  border-color: #0560e3 !important;
+}
+
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-primary:active {
+  background-color: #044bb3 !important;
+  border-color: #044bb3 !important;
+}
+
+.text-primary {
+  color: #0560e3 !important;
+}
+
+.bg-primary {
+  background-color: #0560e3 !important;
+}
+
+a {
+  color: #0560e3;
+}
+
+a:hover {
+  color: #044bb3;
+}
+
+body {
+  background-color: #f0f2f5;
+}
