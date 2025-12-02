@@ -56,7 +56,7 @@ export async function exportData(
 
         // 2. Handle CSV Export
         if (csvSheets.length > 0) {
-            const csvFiles: Array<{ filename: string, content: string }> = [];
+            const csvFiles: Array<{ filename: string, content: Blob }> = [];
 
             for (const sheet of csvSheets) {
                 const { filename, content } = await exportToCSV(

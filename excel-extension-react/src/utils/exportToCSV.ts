@@ -1,6 +1,7 @@
 /**
  * CSV Export Utility
  * Transforms processed pivot data into CSV format
+ * Optimized for large datasets using Blobs and chunked processing
  */
 
 import type { Config, Column } from '../types';
@@ -69,98 +70,100 @@ function buildCustomHeaders(
 }
 
 /**
- * Build CSV table from pivot result
- */
-function buildCSVTable(pivotResult: PivotDataResult): string[] {
-    const lines: string[] = [];
-
-    // 1. Column headers
-    const numGroupCols = pivotResult.rowHeaders[0]?.length || 0;
-
-    pivotResult.headerRows.forEach(headerRow => {
-        const csvRow: string[] = [];
-
-        // Empty cells for row header columns
-        for (let i = 0; i < numGroupCols; i++) {
-            csvRow.push('');
-        }
-
-        // Column header labels
-        headerRow.forEach(header => {
-            csvRow.push(escapeCSV(header.label));
-            // Add empty cells for colSpan > 1
-            for (let i = 1; i < header.colSpan; i++) {
-                csvRow.push('');
-            }
-        });
-
-        lines.push(csvRow.join(','));
-    });
-
-    // 2. Data rows
-    pivotResult.rowHeaders.forEach((rowHeaderCells, rowIdx) => {
-        const csvRow: string[] = [];
-
-        // Row headers
-        rowHeaderCells.forEach(cell => {
-            if (cell.isVisible) {
-                csvRow.push(escapeCSV(cell.value));
-            } else {
-                csvRow.push(''); // Empty cell for merged rows
-            }
-        });
-
-        // Data cells
-        const dataRow = pivotResult.dataMatrix[rowIdx] || [];
-        dataRow.forEach(cell => {
-            csvRow.push(escapeCSV(cell?.value ?? ''));
-        });
-
-        lines.push(csvRow.join(','));
-    });
-
-    return lines;
-}
-
-/**
  * Main CSV export function
- */
-/**
- * Main CSV export function
- * Returns the filename and CSV content string
+ * Returns the filename and CSV content as a Blob
  */
 export async function exportToCSV(
     config: Config,
     pivotResult: PivotDataResult,
     filters: any[],
     allFields: Column[]
-): Promise<{ filename: string, content: string }> {
+): Promise<{ filename: string, content: Blob }> {
     try {
-        const lines: string[] = [];
+        const chunks: string[] = [];
+        const CHUNK_SIZE = 2000; // Process 2000 rows at a time
 
         // 1. Add custom headers
         const customHeaders = buildCustomHeaders(config, filters, allFields);
-        lines.push(...customHeaders);
-
-        // Add blank line after custom headers if they exist
         if (customHeaders.length > 0) {
-            lines.push('');
+            chunks.push(customHeaders.join('\n') + '\n');
+            // Add blank line after custom headers
+            chunks.push('\n');
         }
 
-        // 2. Add pivot table
-        const tableLines = buildCSVTable(pivotResult);
-        lines.push(...tableLines);
+        // 2. Column headers
+        const numGroupCols = pivotResult.rowHeaders[0]?.length || 0;
+        const headerLines: string[] = [];
 
-        // 3. Create CSV content
-        const csvContent = lines.join('\n');
+        pivotResult.headerRows.forEach(headerRow => {
+            const csvRow: string[] = [];
 
-        // 4. Create filename
+            // Empty cells for row header columns
+            for (let i = 0; i < numGroupCols; i++) {
+                csvRow.push('');
+            }
+
+            // Column header labels
+            headerRow.forEach(header => {
+                csvRow.push(escapeCSV(header.label));
+                // Add empty cells for colSpan > 1
+                for (let i = 1; i < header.colSpan; i++) {
+                    csvRow.push('');
+                }
+            });
+
+            headerLines.push(csvRow.join(','));
+        });
+
+        chunks.push(headerLines.join('\n') + '\n');
+
+        // 3. Data rows (Chunked Processing)
+        const totalRows = pivotResult.rowHeaders.length;
+
+        for (let i = 0; i < totalRows; i += CHUNK_SIZE) {
+            const chunkLines: string[] = [];
+            const end = Math.min(i + CHUNK_SIZE, totalRows);
+
+            for (let rowIdx = i; rowIdx < end; rowIdx++) {
+                const csvRow: string[] = [];
+                const rowHeaderCells = pivotResult.rowHeaders[rowIdx];
+
+                // Row headers
+                rowHeaderCells.forEach(cell => {
+                    if (cell.isVisible) {
+                        csvRow.push(escapeCSV(cell.value));
+                    } else {
+                        csvRow.push(''); // Empty cell for merged rows
+                    }
+                });
+
+                // Data cells
+                const dataRow = pivotResult.dataMatrix[rowIdx] || [];
+                dataRow.forEach(cell => {
+                    csvRow.push(escapeCSV(cell?.value ?? ''));
+                });
+
+                chunkLines.push(csvRow.join(','));
+            }
+
+            chunks.push(chunkLines.join('\n') + '\n');
+
+            // Yield to main thread to prevent UI freeze
+            if (i + CHUNK_SIZE < totalRows) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+        }
+
+        // 4. Create Blob
+        const blob = new Blob(chunks, { type: 'text/csv;charset=utf-8;' });
+
+        // 5. Create filename
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
         const workbookName = config.workbookName || 'Report';
         const worksheetName = config.worksheetName || config.selectedWorksheet || 'Sheet';
         const filename = `${workbookName}_${worksheetName}_${timestamp}.csv`;
 
-        return { filename, content: csvContent };
+        return { filename, content: blob };
     } catch (error) {
         console.error('CSV export failed:', error);
         throw error;
