@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { exportToExcel } from './exportToExcel';
-import { exportToCSV } from './exportToCSV';
+import { exportToCSV, exportRawDataToCSV, exportStreamingPivotToCSV } from './exportToCSV';
 import type { Config, Column } from '../types';
 import type { PivotDataResult } from './pivotHelper';
 
@@ -10,6 +10,7 @@ interface ExportSheetData {
     filters: any[];
     allFields: Column[];
     sheetName: string;
+    rawDataSource?: any; // Tableau DataTable
 }
 
 /**
@@ -59,13 +60,50 @@ export async function exportData(
             const csvFiles: Array<{ filename: string, content: Blob }> = [];
 
             for (const sheet of csvSheets) {
-                const { filename, content } = await exportToCSV(
-                    sheet.config,
-                    sheet.pivotResult,
-                    sheet.filters,
-                    sheet.allFields
-                );
-                csvFiles.push({ filename, content });
+                let result;
+                if (sheet.rawDataSource) {
+                    // Use optimized path for raw data
+                    // If exportMode is 'datadump' AND we have pivot columns configured, user might want pivot structure?
+                    // Actually, 'datadump' usually means "Raw Data".
+                    // But the user asked "What If I want the output to follow my pivot configurations?".
+                    // If they select "Data Dump" mode in config, they usually expect raw data.
+                    // If they select "Formatted" (Excel), they get Excel.
+                    // We might need a new mode or just infer.
+                    // For now, let's assume if they are in 'datadump' mode but have rawDataSource, we check if they have pivot columns.
+                    // If they have pivot columns, we use Streaming Pivot.
+                    // If NOT, we use Raw Data Export.
+
+                    // However, 'datadump' is often used for "CSV Export".
+                    // Let's check if the config has pivot columns.
+                    const hasPivot = sheet.config.pivotColumns.length > 0 || sheet.config.groupColumns.length > 0;
+
+                    if (hasPivot) {
+                        console.log('Using Streaming Pivot for CSV export');
+                        result = await exportStreamingPivotToCSV(
+                            sheet.config,
+                            sheet.rawDataSource,
+                            sheet.filters,
+                            sheet.allFields
+                        );
+                    } else {
+                        console.log('Using Raw Data Export for CSV');
+                        result = await exportRawDataToCSV(
+                            sheet.config,
+                            sheet.rawDataSource,
+                            sheet.filters,
+                            sheet.allFields
+                        );
+                    }
+                } else {
+                    // Fallback to standard path (pivot data)
+                    result = await exportToCSV(
+                        sheet.config,
+                        sheet.pivotResult,
+                        sheet.filters,
+                        sheet.allFields
+                    );
+                }
+                csvFiles.push(result);
             }
 
             if (csvFiles.length === 1) {

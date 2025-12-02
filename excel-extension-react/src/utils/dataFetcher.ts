@@ -2,18 +2,18 @@
  * Utility to fetch full dataset from Tableau worksheet
  */
 
-export async function fetchFullDataset(worksheetName: string, maxRows: number = 0): Promise<{ main: any[], gcData: any[] | null, rcData: any[] | null }> {
+export async function fetchFullDataset(worksheetName: string, maxRows: number = 0): Promise<{ main: any[], rawMain?: any, gcData: any[] | null, rcData: any[] | null }> {
     try {
         const worksheets = window.tableau?.extensions?.dashboardContent?.dashboard?.worksheets;
         if (!worksheets) {
             throw new Error('Unable to access Tableau worksheets');
         }
 
-        const fetchSheetData = async (name: string): Promise<any[]> => {
+        const fetchSheetData = async (name: string, returnRaw: boolean = false): Promise<{ data: any[], raw?: any }> => {
             const worksheet = worksheets.find((w: any) => w.name === name);
             if (!worksheet) {
                 console.log(`Worksheet "${name}" not found`);
-                return [];
+                return { data: [] };
             }
 
             // Fetch data with maxRows limit (0 = unlimited)
@@ -75,11 +75,12 @@ export async function fetchFullDataset(worksheetName: string, maxRows: number = 
                     data.push(rowObj);
                 }
             }
-            return data;
+            return { data, raw: returnRaw ? summaryData : undefined };
         };
 
         console.log(`Fetching main data for "${worksheetName}"...`);
-        const mainData = await fetchSheetData(worksheetName);
+        const mainResult = await fetchSheetData(worksheetName, true);
+        const mainData = mainResult.data;
 
         if (mainData.length === 0) {
             throw new Error(`Worksheet "${worksheetName}" not found or empty`);
@@ -87,14 +88,17 @@ export async function fetchFullDataset(worksheetName: string, maxRows: number = 
 
         const gcSheetName = `GC_${worksheetName}`;
         console.log(`Fetching Column Grand Totals from "${gcSheetName}"...`);
-        const gcData = await fetchSheetData(gcSheetName);
+        const gcResult = await fetchSheetData(gcSheetName);
+        const gcData = gcResult.data;
 
         const rcSheetName = `RC_${worksheetName}`;
         console.log(`Fetching Row Grand Totals from "${rcSheetName}"...`);
-        const rcData = await fetchSheetData(rcSheetName);
+        const rcResult = await fetchSheetData(rcSheetName);
+        const rcData = rcResult.data;
 
         return {
             main: mainData,
+            rawMain: mainResult.raw,
             gcData: gcData.length > 0 ? gcData : null,
             rcData: rcData.length > 0 ? rcData : null
         };

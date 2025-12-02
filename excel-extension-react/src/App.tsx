@@ -118,7 +118,7 @@ function App() {
         console.log(`Fetching data for export: ${name}`);
 
         // Fetch data (Main + GC + RC)
-        const { main: data, gcData, rcData } = await fetchFullDataset(name);
+        const { main: data, rawMain, gcData, rcData } = await fetchFullDataset(name);
 
         // Fetch columns/filters metadata for this worksheet (needed for export)
         // We need to get the worksheet object
@@ -159,30 +159,44 @@ function App() {
           allFields = [...config.groupColumns, ...config.pivotColumns, ...config.valueColumns];
         }
 
-        // Process pivot data
-        const pivotResult = processPivotData(
-          data,
-          config.groupColumns,
-          config.pivotColumns,
-          config.valueColumns,
-          {
-            showRowTotals: config.showRowTotals,
-            rowTotalsPosition: config.rowTotalsPosition,
-            showColumnTotals: config.showColumnTotals,
-            columnTotalsPosition: config.columnTotalsPosition,
-            showSubtotals: config.showSubtotals
-          },
-          gcData || undefined,
-          rcData || undefined
-        );
+        // Check if we can use the optimized raw export path
+        // Only for 'datadump' mode and if rawMain is available
+        if (config.exportMode === 'datadump' && rawMain) {
+          console.log(`Using optimized raw export for ${name}`);
+          exportDataList.push({
+            config,
+            pivotResult: { headerRows: [], rowHeaders: [], dataMatrix: [] }, // Dummy pivot result
+            filters,
+            allFields,
+            sheetName: config.worksheetName || name,
+            rawDataSource: rawMain
+          });
+        } else {
+          // Process pivot data (Standard Path)
+          const pivotResult = processPivotData(
+            data,
+            config.groupColumns,
+            config.pivotColumns,
+            config.valueColumns,
+            {
+              showRowTotals: config.showRowTotals,
+              rowTotalsPosition: config.rowTotalsPosition,
+              showColumnTotals: config.showColumnTotals,
+              columnTotalsPosition: config.columnTotalsPosition,
+              showSubtotals: config.showSubtotals
+            },
+            gcData || undefined,
+            rcData || undefined
+          );
 
-        exportDataList.push({
-          config,
-          pivotResult,
-          filters,
-          allFields,
-          sheetName: config.worksheetName || name
-        });
+          exportDataList.push({
+            config,
+            pivotResult,
+            filters,
+            allFields,
+            sheetName: config.worksheetName || name
+          });
+        }
       }));
 
       if (exportDataList.length === 0) {
