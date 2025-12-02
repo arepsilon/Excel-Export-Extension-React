@@ -197,7 +197,6 @@ export async function exportRawDataToCSV(
         chunks.push(headerRow + '\n');
 
         // 3. Data Rows (Chunked)
-        const totalRows = rawDataSource.totalRowCount;
         const data = rawDataSource.data;
 
         for (let i = 0; i < data.length; i += CHUNK_SIZE) {
